@@ -21,25 +21,37 @@ function storageFor(dir) {
   });
 }
 
-function makeUploader(dir, mimePrefixes) {
+function makeUploader(dir, accept) {
   return multer({
     storage: storageFor(dir),
     limits: { fileSize: MAX_UPLOAD_MB * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
-      if (
-        !mimePrefixes ||
-        mimePrefixes.some((p) => (file.mimetype || '').startsWith(p))
-      ) {
-        return cb(null, true);
-      }
-      log.warn('rejected upload — type not accepted', { mimetype: file.mimetype, field: file.fieldname });
+      if (!accept) return cb(null, true);
+      // Recorded blobs can arrive with parameters ("video/webm;codecs=vp9")
+      // or, on some browsers, as a bare application/octet-stream — so accept
+      // on either a normalised mime prefix OR a known extension. A legitimate
+      // recording must never bounce off its own vault.
+      const baseMime = String(file.mimetype || '').split(';')[0].trim().toLowerCase();
+      const ext = path.extname(file.originalname || '').toLowerCase();
+      const mimeOk = accept.prefixes.some((p) => baseMime.startsWith(p));
+      const extOk = accept.exts.includes(ext);
+      if (mimeOk || extOk) return cb(null, true);
+      log.warn('rejected upload — type not accepted', {
+        mimetype: file.mimetype, ext, field: file.fieldname, name: file.originalname,
+      });
       cb(new multer.MulterError('LIMIT_UNEXPECTED_FILE', file.fieldname));
     },
   });
 }
 
-const uploadVideo = makeUploader(DIRS.videos, ['video/']);
-const uploadAudio = makeUploader(DIRS.audio, ['audio/', 'video/webm']); // MediaRecorder voice notes can be video/webm
+const uploadVideo = makeUploader(DIRS.videos, {
+  prefixes: ['video/'],
+  exts: ['.mp4', '.m4v', '.mov', '.webm', '.mkv', '.avi', '.3gp'],
+});
+const uploadAudio = makeUploader(DIRS.audio, {
+  prefixes: ['audio/', 'video/webm'], // MediaRecorder voice notes can be video/webm
+  exts: ['.m4a', '.mp3', '.wav', '.ogg', '.oga', '.webm', '.aac', '.flac'],
+});
 const uploadFile = makeUploader(DIRS.files, null);
 
 /**

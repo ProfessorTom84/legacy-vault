@@ -70,6 +70,21 @@ app.use((req, res, next) => {
   next();
 });
 
+/* ------------------------------------------------------------------
+   HTTPS by default. When the built-in HTTPS listener is on, every plain
+   http request is redirected to the https address — users never need to
+   know two addresses exist. 308 preserves method and body. /api/health
+   is exempt so the container healthcheck keeps hitting plain http.
+   Set REDIRECT_HTTPS=false to opt out (e.g. http-only behind a proxy).
+------------------------------------------------------------------ */
+if (process.env.ENABLE_HTTPS !== 'false' && process.env.REDIRECT_HTTPS !== 'false') {
+  const HTTPS_PUBLIC_PORT = process.env.HTTPS_PUBLIC_PORT || '8443';
+  app.use((req, res, next) => {
+    if (req.secure || req.path === '/api/health') return next();
+    res.redirect(308, `https://${req.hostname}:${HTTPS_PUBLIC_PORT}${req.originalUrl}`);
+  });
+}
+
 app.use(express.json({ limit: '5mb' })); // rich-text bodies
 
 app.get('/api/health', (req, res) =>

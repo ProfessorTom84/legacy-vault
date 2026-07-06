@@ -178,6 +178,17 @@ function Recorder({ kind, onRecorded }) {
     streamRef.current = null;
   };
 
+  // Attach the live stream to the <video> only after React has actually
+  // rendered it. Attaching inside start() raced the render — the element
+  // didn't exist yet, so the preview stayed black even though recording
+  // (which reads the stream directly) worked fine.
+  useEffect(() => {
+    if ((status === 'live' || status === 'recording') && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [status]);
+
   // Cleanup: stop hardware and revoke any blob URL created with
   // URL.createObjectURL — leaking these holds recordings in memory.
   useEffect(() => {
@@ -213,13 +224,7 @@ function Recorder({ kind, onRecorded }) {
       return;
     }
     streamRef.current = stream;
-    if (videoRef.current && wantVideo) {
-      videoRef.current.srcObject = stream;
-      // playsInline + muted are required for iOS to show a live self-view
-      // instead of hijacking the screen or refusing to autoplay.
-      videoRef.current.play().catch(() => {});
-    }
-    setStatus('live');
+    setStatus('live'); // the effect above attaches the preview post-render
   };
 
   const record = () => {
@@ -292,21 +297,13 @@ function Recorder({ kind, onRecorded }) {
 
   /* ---- unsupported environments get an explanation, not a dead button ---- */
   if (support !== 'ok') {
-    // The vault serves HTTPS itself (self-signed) on a companion port —
-    // default host mapping is 8443. Recording works fully there.
     const httpsUrl = `https://${window.location.hostname}:8443${window.location.pathname}`;
     const messages = {
       insecure: (
         <>
-          <strong>To record here, open the vault’s secure address:</strong>{' '}
-          <a href={httpsUrl}>{httpsUrl}</a>
-          <br />
-          Browsers only allow camera/microphone access over HTTPS — nothing is wrong with your device.
-          The vault serves its own HTTPS on port 8443; the first visit on each device shows a certificate
-          warning (choose “Advanced → Proceed” — it’s your own server), and after that
-          recording works fully: live preview, record, re-record, publish. If you changed the HTTPS port,
-          use that one. On phones, the button below also works right now — it opens the phone’s own
-          camera and uploads the result.
+          Recording needs the vault’s secure address.{' '}
+          <a href={httpsUrl}><strong>Open the secure vault →</strong></a>{' '}
+          (first visit shows a one-time certificate prompt — choose Advanced → Proceed).
         </>
       ),
       nodevices: <>This browser doesn’t support camera/microphone access. You can still record with your device’s own app below, or upload a file.</>,
@@ -392,7 +389,8 @@ export default function Studio() {
   const categories = useCategories();
 
   const [tab, setTab] = useState('video');
-  const [mode, setMode] = useState('upload'); // upload | record (video/audio)
+  // Recording is the vault's headline act — it opens first for video/audio.
+  const [mode, setMode] = useState('record'); // record | upload
   const [meta, setMeta] = useState(EMPTY_META);
   const [file, setFile] = useState(null);
   const [recorded, setRecorded] = useState(null);
@@ -505,7 +503,12 @@ export default function Studio() {
                 key={t.key}
                 type="button"
                 className={`chip${tab === t.key ? ' on' : ''}`}
-                onClick={() => { setTab(t.key); setFile(null); setRecorded(null); setMode('upload'); }}
+                onClick={() => {
+                  setTab(t.key);
+                  setFile(null);
+                  setRecorded(null);
+                  setMode(t.key === 'video' || t.key === 'audio' ? 'record' : 'upload');
+                }}
               >
                 {t.label}
               </button>
@@ -515,8 +518,8 @@ export default function Studio() {
           {canRecord && (
             <div style={{ marginBottom: 18 }}>
               <span className="seg" role="group" aria-label="Source">
-                <button type="button" className={mode === 'upload' ? 'on' : ''} onClick={() => setMode('upload')}>Upload</button>
-                <button type="button" className={mode === 'record' ? 'on' : ''} onClick={() => setMode('record')}>Record now</button>
+                <button type="button" className={mode === 'record' ? 'on' : ''} onClick={() => setMode('record')}>🔴 Record now</button>
+                <button type="button" className={mode === 'upload' ? 'on' : ''} onClick={() => setMode('upload')}>Upload a file</button>
               </span>
             </div>
           )}
@@ -538,6 +541,13 @@ export default function Studio() {
         </>
       )}
 
+      {!editingItem && tab !== 'text' && (file || recorded) && (
+        <div className="take-attached">
+          ✓ {(mode === 'record' ? recorded : file)?.name || 'Media'} attached — fill in the details and publish.
+        </div>
+      )}
+
+      <div className="form-section-title">Details — help them find it</div>
       <MetaFields meta={meta} setMeta={setMeta} categories={categories} />
 
       {(tab === 'text' || editingItem?.type === 'text') && (
@@ -548,7 +558,7 @@ export default function Studio() {
 
       <div style={{ display: 'flex', gap: 10 }}>
         <Button type="submit" loading={busy}>
-          {editingItem ? 'Save changes' : 'Add to the vault'}
+          {editingItem ? 'Save changes' : 'Publish to the vault'}
         </Button>
         <Button type="button" variant="ghost" onClick={() => navigate(-1)}>Cancel</Button>
       </div>

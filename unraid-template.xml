@@ -52,6 +52,14 @@
     Description="debug | info | warn | error. Use debug when diagnosing issues."
     Type="Variable" Display="advanced" Required="false" Mask="false">info</Config>
 
+  <Config Name="EXTRA_TLS_HOSTS" Target="EXTRA_TLS_HOSTS" Default=""
+    Description="Optional: comma-separated extra addresses the vault is reached at (e.g. a Tailscale IP like 100.70.172.63) so the certificate covers them too."
+    Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+
+  <Config Name="HTTPS_PUBLIC_PORT" Target="HTTPS_PUBLIC_PORT" Default="8443"
+    Description="The HOST port mapped to 4443 — used when redirecting http visitors to https. Only change if you changed the HTTPS port mapping."
+    Type="Variable" Display="advanced" Required="false" Mask="false">8443</Config>
+
   <Config Name="ENABLE_HTTPS" Target="ENABLE_HTTPS" Default="true"
     Description="Serve HTTPS with a self-signed certificate (needed for in-browser recording). Set false only if a reverse proxy/Tailscale provides HTTPS."
     Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>

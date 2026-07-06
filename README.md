@@ -141,11 +141,7 @@ Set `LOG_LEVEL=debug` to add per-request timing and ffmpeg job durations. Auth t
 
 Browsers only allow camera/microphone access on **secure addresses** (`https://` or `localhost`) — that's a browser rule no website can bypass. So the vault serves HTTPS itself: alongside the normal web port it listens on an **HTTPS port (host 8443 by default)** with a self-signed certificate it generates and stores in `/data/certs`.
 
-To record in the browser — live preview, record, re-record, publish:
-
-1. Open `https://<your-ip>:8443` instead of the http address.
-2. First visit per device shows a certificate warning (it's your own server's self-signed cert): choose **Advanced → Proceed**. One time per device.
-3. Recording now works fully, on desktop and phones.
+**HTTPS is the default:** any visit to the plain http address is automatically redirected to `https://<your-ip>:8443`, so there's only one address to know. The first visit per device shows a certificate warning (it's your own server's self-signed cert): choose **Advanced → Proceed** — one time per device — and recording works fully on desktop and phones. Reaching the vault at more than one address (say a LAN IP and a Tailscale IP)? List the extras in `EXTRA_TLS_HOSTS` so the certificate covers them all. Opt out of the redirect with `REDIRECT_HTTPS=false`.
 
 Tips:
 - Consider setting `BASE_URL` to the https address so password-reset links use it.

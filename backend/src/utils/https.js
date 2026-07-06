@@ -29,6 +29,11 @@ function wantedHosts() {
   } catch {
     /* unparseable BASE_URL — cert still covers localhost */
   }
+  // EXTRA_TLS_HOSTS: comma-separated additional addresses the vault is
+  // reached at (e.g. a Tailscale IP alongside the LAN IP).
+  for (const h of String(process.env.EXTRA_TLS_HOSTS || '').split(',')) {
+    if (h.trim()) hosts.add(h.trim());
+  }
   return [...hosts].sort();
 }
 
