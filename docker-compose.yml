@@ -1,0 +1,36 @@
+services:
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - NODE_ENV=production
+      - DATA_DIR=/data
+    volumes:
+      - vault_db:/data/db
+      - vault_media:/data/uploads
+    expose:
+      - "4000"
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    expose:
+      - "80"
+    depends_on:
+      - backend
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  vault_db:
+  vault_media:

@@ -1,0 +1,66 @@
+const path = require('path');
+const crypto = require('crypto');
+const multer = require('multer');
+const { DIRS } = require('../db');
+
+const MAX_UPLOAD_MB = parseInt(process.env.MAX_UPLOAD_MB || '2048', 10);
+
+function storageFor(dir) {
+  return multer.diskStorage({
+    destination: (req, file, cb) => cb(null, dir),
+    filename: (req, file, cb) => {
+      // Never trust the client filename on disk — generate our own,
+      // keeping only a sanitised extension.
+      const ext = (path.extname(file.originalname) || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9.]/g, '')
+        .slice(0, 10);
+      cb(null, `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`);
+    },
+  });
+}
+
+function makeUploader(dir, mimePrefixes) {
+  return multer({
+    storage: storageFor(dir),
+    limits: { fileSize: MAX_UPLOAD_MB * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+      if (
+        !mimePrefixes ||
+        mimePrefixes.some((p) => (file.mimetype || '').startsWith(p))
+      ) {
+        return cb(null, true);
+      }
+      cb(new multer.MulterError('LIMIT_UNEXPECTED_FILE', file.fieldname));
+    },
+  });
+}
+
+const uploadVideo = makeUploader(DIRS.videos, ['video/']);
+const uploadAudio = makeUploader(DIRS.audio, ['audio/', 'video/webm']); // MediaRecorder voice notes can be video/webm
+const uploadFile = makeUploader(DIRS.files, null);
+
+/**
+ * Multer throws (file too large, wrong field, wrong type). Without this
+ * wrapper Express would render an HTML error page; the frontend expects JSON.
+ */
+function handleUpload(uploader, field) {
+  const single = uploader.single(field);
+  return (req, res, next) => {
+    single(req, res, (err) => {
+      if (!err) return next();
+      if (err instanceof multer.MulterError) {
+        const messages = {
+          LIMIT_FILE_SIZE: `That file is too large. The limit is ${MAX_UPLOAD_MB} MB.`,
+          LIMIT_UNEXPECTED_FILE: 'That file type is not accepted here.',
+        };
+        return res
+          .status(400)
+          .json({ error: messages[err.code] || `Upload failed: ${err.code}` });
+      }
+      return res.status(500).json({ error: 'Upload failed. Try again.' });
+    });
+  };
+}
+
+module.exports = { uploadVideo, uploadAudio, uploadFile, handleUpload };
