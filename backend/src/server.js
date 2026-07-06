@@ -157,4 +157,28 @@ setInterval(() => {
 }, 60 * 60 * 1000).unref();
 
 const PORT = parseInt(process.env.APP_PORT || '4000', 10);
-app.listen(PORT, () => log.info(`Legacy Vault listening on :${PORT}`));
+app.listen(PORT, () => log.info(`Legacy Vault listening on :${PORT} (http)`));
+
+/* ------------------------------------------------------------------
+   Built-in HTTPS. Browsers only allow camera/microphone access on
+   secure origins, so in-browser recording needs an https:// address.
+   A self-signed certificate is generated and persisted in $DATA_DIR/certs;
+   each device accepts a one-time browser warning, after which recording
+   works everywhere. Disable with ENABLE_HTTPS=false (e.g. when a reverse
+   proxy or Tailscale already provides real HTTPS in front).
+------------------------------------------------------------------ */
+if (process.env.ENABLE_HTTPS !== 'false') {
+  const { ensureCert } = require('./utils/https');
+  const pems = ensureCert();
+  if (pems) {
+    const https = require('https');
+    const HTTPS_PORT = parseInt(process.env.HTTPS_PORT || '4443', 10);
+    https
+      .createServer({ key: pems.key, cert: pems.cert }, app)
+      .listen(HTTPS_PORT, () =>
+        log.info(`Legacy Vault listening on :${HTTPS_PORT} (https, self-signed — in-browser recording works here)`)
+      );
+  } else {
+    log.warn('HTTPS unavailable — in-browser recording will only work behind an external HTTPS proxy');
+  }
+}

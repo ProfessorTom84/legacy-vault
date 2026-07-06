@@ -49,6 +49,19 @@ Click **Apply**, open `http://<unraid-ip>:8080`, and the first visit walks you t
 
 **Updating:** push your change to GitHub, wait for Actions, then in Unraid click the container → **Force Update** (or enable auto-updates via the Auto Update Applications plugin). Your database and media are in the appdata paths, untouched by updates.
 
+
+## Unraid template (GUI-managed container)
+
+The repo includes `unraid-template.xml` — a pre-filled Unraid Docker template with every port, path and variable. Install it once and the container becomes fully GUI-managed: the Edit form works, **Force Update** pulls new images, and the autostart toggle applies.
+
+```bash
+# on the Unraid terminal:
+cp /mnt/user/appdata/legacy-vault-repo/unraid-template.xml \
+   /boot/config/plugins/dockerMan/templates-user/my-legacy-vault.xml
+```
+
+Then: Docker tab → Add Container → pick **legacy-vault** from the Template dropdown (under User templates) → paste your JWT_SECRET → Apply. Updates afterwards are just: push to GitHub, wait for Actions, click **Force Update** on the container.
+
 ## Docker Compose (any server, or Unraid Compose Manager)
 
 Pull the published image:
@@ -124,18 +137,21 @@ What to look for:
 
 Set `LOG_LEVEL=debug` to add per-request timing and ffmpeg job durations. Auth tokens are automatically redacted from all logged URLs.
 
-## In-browser recording needs HTTPS
+## In-browser recording & the built-in HTTPS
 
-Browsers only allow camera/microphone access on **secure addresses** — `https://` or `localhost`. On a plain `http://192.168.x.x:8181` address, in-browser recording is disabled *by the browser*, on every device; the app detects this and offers the fallback: **"Record with your camera/voice app"**, which opens the phone's native recorder and uploads the result — that works everywhere, HTTPS or not.
+Browsers only allow camera/microphone access on **secure addresses** (`https://` or `localhost`) — that's a browser rule no website can bypass. So the vault serves HTTPS itself: alongside the normal web port it listens on an **HTTPS port (host 8443 by default)** with a self-signed certificate it generates and stores in `/data/certs`.
 
-To get full in-browser recording, serve the vault over HTTPS. The easiest path is Tailscale:
+To record in the browser — live preview, record, re-record, publish:
 
-```bash
-# on the server, with Tailscale installed and logged in:
-tailscale serve --bg 8181
-```
+1. Open `https://<your-ip>:8443` instead of the http address.
+2. First visit per device shows a certificate warning (it's your own server's self-signed cert): choose **Advanced → Proceed**. One time per device.
+3. Recording now works fully, on desktop and phones.
 
-That gives you `https://tower.your-tailnet.ts.net` with a valid certificate, no ports opened. Update `BASE_URL` to that address. Cloudflare Tunnel (see above) also provides HTTPS automatically.
+Tips:
+- Consider setting `BASE_URL` to the https address so password-reset links use it.
+- The recorder screen detects when you're on the http address and links you to the https one.
+- Phones additionally get a "record with your camera app" button that works even over plain http.
+- If Tailscale or Cloudflare already give you real HTTPS in front, set `ENABLE_HTTPS=false` and use that instead — `tailscale serve --bg 8181` yields a warning-free `https://tower.your-tailnet.ts.net`.
 
 ## Backups
 

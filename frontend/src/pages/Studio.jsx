@@ -154,6 +154,9 @@ function NativeCaptureButton({ kind, onPicked }) {
       <Button type="button" variant="ghost" onClick={() => inputRef.current && inputRef.current.click()}>
         {kind === 'video' ? '📱 Record with your camera app' : '📱 Record with your voice app'}
       </Button>
+      <span style={{ color: 'var(--faint)', fontSize: 12 }}>
+        Opens the camera on phones; on a computer it’s a file picker.
+      </span>
     </>
   );
 }
@@ -250,7 +253,7 @@ function Recorder({ kind, onRecorded }) {
       const type = rec.mimeType || mimeType || (kind === 'video' ? 'video/mp4' : 'audio/mp4');
       const blob = new Blob(chunksRef.current, { type });
       if (blob.size === 0) {
-        setError('The recording came out empty — this can happen on some browsers. Try again, or record with your device\u2019s own app below.');
+        setError('The recording came out empty — this can happen on some browsers. Try again, or record with your device’s own app below.');
         setStatus('error');
         stopStream();
         return;
@@ -289,18 +292,25 @@ function Recorder({ kind, onRecorded }) {
 
   /* ---- unsupported environments get an explanation, not a dead button ---- */
   if (support !== 'ok') {
+    // The vault serves HTTPS itself (self-signed) on a companion port —
+    // default host mapping is 8443. Recording works fully there.
+    const httpsUrl = `https://${window.location.hostname}:8443${window.location.pathname}`;
     const messages = {
       insecure: (
         <>
-          <strong>In-browser recording needs a secure (HTTPS) address.</strong> You\u2019re on a plain
-          http:// address, and browsers disable the camera and microphone there — nothing is wrong with
-          your device. Two easy ways forward: use the button below to record with your device\u2019s own
-          camera/voice app (works right now), or serve the vault over HTTPS — the README covers
-          Tailscale HTTPS in a few minutes.
+          <strong>To record here, open the vault’s secure address:</strong>{' '}
+          <a href={httpsUrl}>{httpsUrl}</a>
+          <br />
+          Browsers only allow camera/microphone access over HTTPS — nothing is wrong with your device.
+          The vault serves its own HTTPS on port 8443; the first visit on each device shows a certificate
+          warning (choose “Advanced → Proceed” — it’s your own server), and after that
+          recording works fully: live preview, record, re-record, publish. If you changed the HTTPS port,
+          use that one. On phones, the button below also works right now — it opens the phone’s own
+          camera and uploads the result.
         </>
       ),
-      nodevices: <>This browser doesn\u2019t support camera/microphone access. You can still record with your device\u2019s own app below, or upload a file.</>,
-      norecorder: <>This browser can show the camera but can\u2019t record from it (older iOS versions, some webviews). Use the button below to record with your device\u2019s own app — it uploads here just the same.</>,
+      nodevices: <>This browser doesn’t support camera/microphone access. You can still record with your device’s own app below, or upload a file.</>,
+      norecorder: <>This browser can show the camera but can’t record from it (older iOS versions, some webviews). Use the button below to record with your device’s own app — it uploads here just the same.</>,
     };
     return (
       <div style={{ marginBottom: 18 }}>

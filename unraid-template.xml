@@ -1,0 +1,78 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>legacy-vault</Name>
+  <Repository>ghcr.io/professortom84/legacy-vault:latest</Repository>
+  <Registry>https://ghcr.io</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/ProfessorTom84/legacy-vault</Support>
+  <Project>https://github.com/ProfessorTom84/legacy-vault</Project>
+  <Overview>Private, self-hosted family legacy vault — a searchable library of videos, voice notes, letters and documents to leave for your family. Netflix-style browsing, instant full-text search, in-browser recording, collections, and admin-released legacy items. All media served through authenticated endpoints.</Overview>
+  <Category>MediaServer: HomeAutomation:</Category>
+  <WebUI>http://[IP]:[PORT:4000]/</WebUI>
+  <ExtraParams>--restart unless-stopped</ExtraParams>
+  <PostArgs/>
+  <DonateText/>
+  <DonateLink/>
+
+  <Config Name="Web Port" Target="4000" Default="8181" Mode="tcp"
+    Description="Host port for the web interface, plain http (container always listens on 4000)."
+    Type="Port" Display="always" Required="true" Mask="false">8181</Config>
+
+  <Config Name="HTTPS Port" Target="4443" Default="8443" Mode="tcp"
+    Description="Host port for HTTPS (self-signed). In-browser camera/microphone recording requires this address: https://your-ip:8443 — accept the one-time browser warning on each device."
+    Type="Port" Display="always" Required="true" Mask="false">8443</Config>
+
+  <Config Name="Database" Target="/data/db" Default="/mnt/user/appdata/legacy-vault/db" Mode="rw"
+    Description="SQLite database — back this up."
+    Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/legacy-vault/db</Config>
+
+  <Config Name="Uploads" Target="/data/uploads" Default="/mnt/user/appdata/legacy-vault/uploads" Mode="rw"
+    Description="All videos, audio, files, thumbnails — back this up."
+    Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/legacy-vault/uploads</Config>
+
+  <Config Name="Logs" Target="/data/logs" Default="/mnt/user/appdata/legacy-vault/logs" Mode="rw"
+    Description="Persistent application logs (survive container recreation)."
+    Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/legacy-vault/logs</Config>
+
+  <Config Name="JWT_SECRET" Target="JWT_SECRET" Default=""
+    Description="REQUIRED. Long random string that signs logins. Generate with: openssl rand -hex 48. Changing it logs everyone out (nothing else is lost)."
+    Type="Variable" Display="always" Required="true" Mask="true"></Config>
+
+  <Config Name="BASE_URL" Target="BASE_URL" Default="http://192.168.4.36:8181"
+    Description="The address you open the vault at — used in password-reset links. Update if you switch to Tailscale/HTTPS."
+    Type="Variable" Display="always" Required="true" Mask="false">http://192.168.4.36:8181</Config>
+
+  <Config Name="DATA_DIR" Target="DATA_DIR" Default="/data"
+    Description="Where the app keeps its data inside the container. Leave as /data."
+    Type="Variable" Display="advanced" Required="true" Mask="false">/data</Config>
+
+  <Config Name="LOG_LEVEL" Target="LOG_LEVEL" Default="info"
+    Description="debug | info | warn | error. Use debug when diagnosing issues."
+    Type="Variable" Display="advanced" Required="false" Mask="false">info</Config>
+
+  <Config Name="ENABLE_HTTPS" Target="ENABLE_HTTPS" Default="true"
+    Description="Serve HTTPS with a self-signed certificate (needed for in-browser recording). Set false only if a reverse proxy/Tailscale provides HTTPS."
+    Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+
+  <Config Name="MAX_UPLOAD_MB" Target="MAX_UPLOAD_MB" Default="2048"
+    Description="Maximum upload size in megabytes."
+    Type="Variable" Display="advanced" Required="false" Mask="false">2048</Config>
+
+  <Config Name="SMTP_HOST" Target="SMTP_HOST" Default=""
+    Description="Optional: SMTP server for password-reset emails. Without SMTP, reset links print to the log."
+    Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+
+  <Config Name="SMTP_PORT" Target="SMTP_PORT" Default="587"
+    Description="Optional: SMTP port." Type="Variable" Display="advanced" Required="false" Mask="false">587</Config>
+
+  <Config Name="SMTP_USER" Target="SMTP_USER" Default=""
+    Description="Optional: SMTP username." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+
+  <Config Name="SMTP_PASS" Target="SMTP_PASS" Default=""
+    Description="Optional: SMTP password." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+
+  <Config Name="SMTP_FROM" Target="SMTP_FROM" Default=""
+    Description="Optional: From address for reset emails." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+</Container>
