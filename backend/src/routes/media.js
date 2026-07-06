@@ -47,7 +47,11 @@ function sendSafe(res, baseDir, filename, downloadName) {
 }
 
 function loadContent(req, res) {
-  const id = parseInt(req.params.id, 10);
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isInteger(id)) {
+    res.status(404).json({ error: 'Not found.' });
+    return null;
+  }
   const row = db.prepare('SELECT * FROM content WHERE id = ?').get(id);
   if (!row || !visible(req.user, row)) {
     res.status(404).json({ error: 'Not found.' });

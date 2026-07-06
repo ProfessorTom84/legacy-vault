@@ -19,6 +19,13 @@ function parseBool(v) {
   return v === true || v === 'true' ? 1 : 0;
 }
 
+// Route ids and numeric filters arrive as strings; anything non-numeric
+// must 404/skip cleanly instead of reaching the database as NaN.
+function safeInt(v) {
+  const n = Number.parseInt(v, 10);
+  return Number.isInteger(n) ? n : null;
+}
+
 function parseTags(raw) {
   if (Array.isArray(raw)) return raw;
   if (typeof raw === 'string' && raw.trim()) {
@@ -230,9 +237,9 @@ router.get('/', (req, res) => {
     where.push('c.type = ?');
     params.push(String(req.query.type));
   }
-  if (req.query.category) {
+  if (safeInt(req.query.category) !== null) {
     where.push('c.category_id = ?');
-    params.push(parseInt(req.query.category, 10));
+    params.push(safeInt(req.query.category));
   }
   if (req.query.tag) {
     where.push(
@@ -240,9 +247,9 @@ router.get('/', (req, res) => {
     );
     params.push(String(req.query.tag).toLowerCase());
   }
-  if (req.query.collection) {
+  if (safeInt(req.query.collection) !== null) {
     where.push('c.id IN (SELECT content_id FROM collection_items WHERE collection_id = ?)');
-    params.push(parseInt(req.query.collection, 10));
+    params.push(safeInt(req.query.collection));
   }
   if (req.query.pinned === 'true') where.push('c.pinned = 1');
   if (req.query.stale === 'true') where.push("c.reviewed_at < datetime('now', '-12 months')");
@@ -259,7 +266,11 @@ router.get('/', (req, res) => {
  * ------------------------------------------------------------------ */
 
 function loadVisible(req, res) {
-  const id = parseInt(req.params.id, 10);
+  const id = safeInt(req.params.id);
+  if (id === null) {
+    res.status(404).json({ error: 'That item does not exist.' });
+    return null;
+  }
   const row = db.prepare(`${BASE_SELECT} WHERE c.id = ?`).get(id);
   if (!row) {
     res.status(404).json({ error: 'That item does not exist.' });
@@ -344,8 +355,8 @@ router.post('/:id/reviewed', requireRole('author'), (req, res) => {
 });
 
 router.post('/:id/release', requireRole('admin'), (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  const row = db.prepare('SELECT * FROM content WHERE id = ?').get(id);
+  const id = safeInt(req.params.id);
+  const row = id === null ? null : db.prepare('SELECT * FROM content WHERE id = ?').get(id);
   if (!row) return res.status(404).json({ error: 'That item does not exist.' });
   const released = parseBool(req.body.released);
   db.prepare('UPDATE content SET released = ? WHERE id = ?').run(released, id);
@@ -371,9 +382,7 @@ router.put('/:id', requireRole('author'), (req, res) => {
       : row.body;
   const categoryId =
     req.body.category_id !== undefined
-      ? req.body.category_id
-        ? parseInt(req.body.category_id, 10)
-        : null
+      ? safeInt(req.body.category_id)
       : row.category_id;
   const pinned = req.body.pinned !== undefined ? parseBool(req.body.pinned) : row.pinned;
   const isPrivate =

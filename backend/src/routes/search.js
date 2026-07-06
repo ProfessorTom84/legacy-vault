@@ -36,14 +36,16 @@ router.get('/', (req, res) => {
   const params = [...vis.params];
 
   if (req.query.type) { where.push('c.type = ?'); params.push(String(req.query.type)); }
-  if (req.query.category) { where.push('c.category_id = ?'); params.push(parseInt(req.query.category, 10)); }
+  const catId = Number.parseInt(req.query.category, 10);
+  if (Number.isInteger(catId)) { where.push('c.category_id = ?'); params.push(catId); }
   if (req.query.tag) {
     where.push('c.id IN (SELECT ct.content_id FROM content_tags ct JOIN tags t ON t.id = ct.tag_id WHERE t.name = ?)');
     params.push(String(req.query.tag).toLowerCase());
   }
-  if (req.query.collection) {
+  const collId = Number.parseInt(req.query.collection, 10);
+  if (Number.isInteger(collId)) {
     where.push('c.id IN (SELECT content_id FROM collection_items WHERE collection_id = ?)');
-    params.push(parseInt(req.query.collection, 10));
+    params.push(collId);
   }
   if (req.query.pinned === 'true') where.push('c.pinned = 1');
   if (req.query.stale === 'true') where.push("c.reviewed_at < datetime('now', '-12 months')");

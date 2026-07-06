@@ -22,7 +22,8 @@ router.post('/', requireRole('admin'), (req, res) => {
   const color = /^#[0-9a-fA-F]{3,8}$/.test(String(req.body.color || ''))
     ? req.body.color
     : '#c9822e';
-  const parentId = req.body.parent_id ? parseInt(req.body.parent_id, 10) : null;
+  const parsedParent = Number.parseInt(req.body.parent_id, 10);
+  const parentId = Number.isInteger(parsedParent) ? parsedParent : null;
   const sortOrder = parseInt(req.body.sort_order, 10) || 0;
   const info = db
     .prepare('INSERT INTO categories (name, icon, color, parent_id, sort_order) VALUES (?, ?, ?, ?, ?)')
@@ -31,8 +32,8 @@ router.post('/', requireRole('admin'), (req, res) => {
 });
 
 router.put('/:id', requireRole('admin'), (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
+  const id = Number.parseInt(req.params.id, 10);
+  const cat = Number.isInteger(id) ? db.prepare('SELECT * FROM categories WHERE id = ?').get(id) : null;
   if (!cat) return res.status(404).json({ error: 'Category not found.' });
   const name = req.body.name !== undefined ? String(req.body.name).trim() : cat.name;
   const icon = req.body.icon !== undefined ? String(req.body.icon).slice(0, 8) : cat.icon;
@@ -42,7 +43,8 @@ router.put('/:id', requireRole('admin'), (req, res) => {
       : cat.color;
   let parentId = cat.parent_id;
   if (req.body.parent_id !== undefined) {
-    parentId = req.body.parent_id ? parseInt(req.body.parent_id, 10) : null;
+    const parsed = Number.parseInt(req.body.parent_id, 10);
+    parentId = Number.isInteger(parsed) ? parsed : null;
     if (parentId === id) parentId = cat.parent_id; // no self-parenting
   }
   const sortOrder =
@@ -54,8 +56,8 @@ router.put('/:id', requireRole('admin'), (req, res) => {
 });
 
 router.delete('/:id', requireRole('admin'), (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (!db.prepare('SELECT id FROM categories WHERE id = ?').get(id)) {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || !db.prepare('SELECT id FROM categories WHERE id = ?').get(id)) {
     return res.status(404).json({ error: 'Category not found.' });
   }
   db.prepare('UPDATE categories SET parent_id = NULL WHERE parent_id = ?').run(id);

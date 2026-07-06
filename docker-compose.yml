@@ -1,35 +1,22 @@
+# Single-container deployment: one service runs the API, serves the built
+# React app, and streams authenticated media. Build locally with:
+#
+#   cp .env.example .env   # set JWT_SECRET at minimum
+#   docker compose up -d --build
+
 services:
-  backend:
-    build: ./backend
+  vault:
+    build: .
     restart: unless-stopped
     env_file: .env
     environment:
       - NODE_ENV=production
       - DATA_DIR=/data
+    ports:
+      - "${PORT:-8080}:4000"
     volumes:
       - vault_db:/data/db
       - vault_media:/data/uploads
-    expose:
-      - "4000"
-
-  frontend:
-    build: ./frontend
-    restart: unless-stopped
-    expose:
-      - "80"
-    depends_on:
-      - backend
-
-  nginx:
-    image: nginx:1.27-alpine
-    restart: unless-stopped
-    ports:
-      - "${PORT:-8080}:80"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-    depends_on:
-      - backend
-      - frontend
 
 volumes:
   vault_db:

@@ -16,6 +16,12 @@ function visibilitySql(user) {
   return { sql: '(c.is_private = 0 OR c.released = 1)', params: [] };
 }
 
+function loadById(req) {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isInteger(id)) return { id: null, collection: null };
+  return { id, collection: db.prepare('SELECT * FROM collections WHERE id = ?').get(id) };
+}
+
 function canManage(user, collection) {
   return user.role === 'admin' || (user.role === 'author' && collection.author_id === user.id);
 }
@@ -52,12 +58,12 @@ router.post('/', requireRole('author'), (req, res) => {
 });
 
 router.get('/:id', (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  const collection = db
-    .prepare(
-      'SELECT col.*, u.name AS author_name FROM collections col LEFT JOIN users u ON u.id = col.author_id WHERE col.id = ?'
-    )
-    .get(id);
+  const id = Number.parseInt(req.params.id, 10);
+  const collection = Number.isInteger(id)
+    ? db.prepare(
+        'SELECT col.*, u.name AS author_name FROM collections col LEFT JOIN users u ON u.id = col.author_id WHERE col.id = ?'
+      ).get(id)
+    : null;
   if (!collection) return res.status(404).json({ error: 'Collection not found.' });
 
   const vis = visibilitySql(req.user);
@@ -87,8 +93,7 @@ router.get('/:id', (req, res) => {
 });
 
 router.put('/:id', requireRole('author'), (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  const collection = db.prepare('SELECT * FROM collections WHERE id = ?').get(id);
+  const { id, collection } = loadById(req);
   if (!collection) return res.status(404).json({ error: 'Collection not found.' });
   if (!canManage(req.user, collection)) {
     return res.status(403).json({ error: 'You can only edit your own collections.' });
@@ -119,8 +124,7 @@ const replaceItems = db.transaction((collectionId, contentIds) => {
 });
 
 router.put('/:id/items', requireRole('author'), (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  const collection = db.prepare('SELECT * FROM collections WHERE id = ?').get(id);
+  const { id, collection } = loadById(req);
   if (!collection) return res.status(404).json({ error: 'Collection not found.' });
   if (!canManage(req.user, collection)) {
     return res.status(403).json({ error: 'You can only edit your own collections.' });
@@ -134,8 +138,7 @@ router.put('/:id/items', requireRole('author'), (req, res) => {
 });
 
 router.delete('/:id', requireRole('author'), (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  const collection = db.prepare('SELECT * FROM collections WHERE id = ?').get(id);
+  const { id, collection } = loadById(req);
   if (!collection) return res.status(404).json({ error: 'Collection not found.' });
   if (!canManage(req.user, collection)) {
     return res.status(403).json({ error: 'You can only delete your own collections.' });

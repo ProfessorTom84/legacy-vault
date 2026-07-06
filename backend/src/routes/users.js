@@ -34,8 +34,8 @@ router.post('/', (req, res) => {
 });
 
 router.put('/:id', (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  const id = Number.parseInt(req.params.id, 10);
+  const user = Number.isInteger(id) ? db.prepare('SELECT * FROM users WHERE id = ?').get(id) : null;
   if (!user) return res.status(404).json({ error: 'User not found.' });
 
   const name = req.body.name !== undefined ? String(req.body.name).trim() : user.name;
@@ -77,8 +77,8 @@ router.put('/:id', (req, res) => {
 });
 
 router.delete('/:id', (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  const id = Number.parseInt(req.params.id, 10);
+  const user = Number.isInteger(id) ? db.prepare('SELECT * FROM users WHERE id = ?').get(id) : null;
   if (!user) return res.status(404).json({ error: 'User not found.' });
   if (user.role === 'admin') {
     const admins = db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'").get().n;

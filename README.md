@@ -9,63 +9,76 @@ A private, self-hosted content library for the things you want to leave behind �
 - **Legacy items** — content hidden from viewers until the admin releases it
 - **Roles** — admin / author / viewer, unlimited users
 - **Private by design** — every media file is served through authenticated endpoints; nothing is publicly reachable
+- **One container** — API, web app, media streaming and ffmpeg processing in a single image
 
-## Publish on GitHub, deploy to Unraid (recommended workflow)
+## How it fits together
 
-The repo ships with a GitHub Actions workflow (`.github/workflows/build-images.yml`) that builds both Docker images and publishes them to GitHub Container Registry on every push to `main`. Unraid then just pulls — no building on the server.
+One container runs everything: Node/Express serves the compiled React app, the JSON API, and authenticated media streams (with HTTP range support, so video seeking works). ffmpeg inside the same image generates thumbnails, GIF hover previews and audio waveforms. Data lives outside the container in two mounts: `/data/db` (SQLite) and `/data/uploads` (all media).
 
-**One-time setup:**
+## Publish on GitHub, deploy anywhere (recommended)
 
-1. Create a repo on GitHub (private is fine) and push this project:
-   ```bash
-   git init && git add . && git commit -m "Legacy Vault"
-   git branch -M main
-   git remote add origin git@github.com:yourname/legacy-vault.git
-   git push -u origin main
-   ```
-2. Wait for the **Actions** tab to go green (~3–5 min). Two packages appear under your profile: `legacy-vault-backend` and `legacy-vault-frontend`.
-3. **If the repo is private**, the images are too. Either make just the packages public (each package → Package settings → Change visibility — the code stays private), or log Unraid into GHCR once with a personal access token that has `read:packages`:
+The repo ships with a GitHub Actions workflow (`.github/workflows/build-images.yml`) that builds the image and publishes it to GitHub Container Registry as `ghcr.io/yourname/legacy-vault` on every push to `main`.
+
+1. Push this project to a GitHub repo (private is fine).
+2. Wait for the **Actions** tab to go green (~3–5 min). A package named `legacy-vault` appears under your profile.
+3. **If the repo is private**, the image is too. Either make just the package public (Package settings → Change visibility — your code stays private, and the image contains no secrets), or log your server into GHCR once with a personal access token that has `read:packages`:
    ```bash
    docker login ghcr.io -u yourname
    ```
-4. On Unraid, put the repo in appdata (clone it, or download the zip from GitHub):
-   ```bash
-   cd /mnt/user/appdata && git clone https://github.com/yourname/legacy-vault.git && cd legacy-vault
-   cp .env.example .env   # set JWT_SECRET, GITHUB_REPO, BASE_URL, SMTP
-   ```
-5. In the Compose Manager plugin, point a stack at that folder and set the compose file to `docker-compose.ghcr.yml` — or from the terminal:
-   ```bash
-   docker compose -f docker-compose.ghcr.yml up -d
-   ```
 
-**Updating later:** push your change to GitHub, wait for Actions to finish, then on Unraid:
+## Unraid — Add Container (plain GUI, no plugins)
+
+Because it's a single container, the standard **Docker → Add Container** form is all you need:
+
+| Field | Value |
+|---|---|
+| Name | `legacy-vault` |
+| Repository | `ghcr.io/yourname/legacy-vault:latest` |
+| Network Type | `bridge` |
+| Port | Container `4000` → Host `8080` (or any free port) |
+| Path 1 | Container `/data/db` → Host `/mnt/user/appdata/legacy-vault/db` |
+| Path 2 | Container `/data/uploads` → Host `/mnt/user/appdata/legacy-vault/uploads` |
+| Variable | `JWT_SECRET` = a long random string (`openssl rand -hex 48`) |
+| Variable | `DATA_DIR` = `/data` |
+| Variable | `BASE_URL` = the address you'll open it at, e.g. `http://192.168.1.10:8080` |
+
+Optional variables: `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (password-reset emails — without them, reset links print to the container log), and `MAX_UPLOAD_MB` (default 2048).
+
+Click **Apply**, open `http://<unraid-ip>:8080`, and the first visit walks you through creating the **admin account** — the only account setup creates. Add your family afterwards in **Admin → Users**.
+
+**Updating:** push your change to GitHub, wait for Actions, then in Unraid click the container → **Force Update** (or enable auto-updates via the Auto Update Applications plugin). Your database and media are in the appdata paths, untouched by updates.
+
+## Docker Compose (any server, or Unraid Compose Manager)
+
+Pull the published image:
+
+```bash
+git clone https://github.com/yourname/legacy-vault.git && cd legacy-vault
+cp .env.example .env   # set JWT_SECRET, GITHUB_REPO, BASE_URL, SMTP
+docker compose -f docker-compose.ghcr.yml up -d
+```
+
+Or build locally from source (no GitHub needed):
+
+```bash
+cp .env.example .env \
+  && sed -i "s/change-me-to-a-long-random-string/$(openssl rand -hex 48)/" .env \
+  && docker compose up -d --build
+```
+
+Update a compose deployment with:
 
 ```bash
 docker compose -f docker-compose.ghcr.yml pull && docker compose -f docker-compose.ghcr.yml up -d
 ```
 
-Your data is untouched by updates — it lives in the `vault_db` and `vault_media` volumes, not in the images.
+Compose uses named volumes by default. To keep data as plain files instead (easier backups), swap the volumes for bind mounts:
 
-## Quick start (single command, builds locally)
-
-```bash
-git clone <your-repo-url> legacy-vault && cd legacy-vault \
-  && cp .env.example .env \
-  && sed -i "s/change-me-to-a-long-random-string/$(openssl rand -hex 48)/" .env \
-  && docker compose up -d --build
+```yaml
+    volumes:
+      - /mnt/user/appdata/legacy-vault/db:/data/db
+      - /mnt/user/appdata/legacy-vault/uploads:/data/uploads
 ```
-
-Then open `http://<server-ip>:8080`. The first visit walks you through creating the **admin account** — that's the only account setup creates. Add your family afterwards in **Admin → Users**.
-
-> Edit `.env` before (or after) starting to set `BASE_URL` and SMTP details — password-reset emails need them. Without SMTP, reset links are printed to the backend logs (`docker compose logs backend`) so you can pass them on manually.
-
-## Unraid
-
-1. Install the **Compose Manager** plugin from Community Applications.
-2. Create a new stack, paste in this repo's `docker-compose.yml`, and add the `.env` values in the stack's env section (or place the whole repo in `/mnt/user/appdata/legacy-vault` and point the stack at it).
-3. Set `PORT` to a free host port, then **Compose Up**.
-
-Uploads and the database live in named Docker volumes (`vault_media`, `vault_db`). To keep them on the array instead, replace the named volumes in `docker-compose.yml` with bind mounts, e.g. `/mnt/user/appdata/legacy-vault/uploads:/data/uploads`.
 
 ## Remote access
 
@@ -74,53 +87,49 @@ This app is designed to stay off the public internet. Two good options:
 ### Tailscale (recommended — zero exposure)
 
 1. Install Tailscale on the server (Unraid has a plugin) and on each family member's phone/laptop.
-2. Sign everyone into the same tailnet (use free "invite" sharing for family).
+2. Sign everyone into the same tailnet (free invite sharing works for family).
 3. Open `http://<tailscale-ip-or-magicdns-name>:8080` from any device on the tailnet.
-4. Set `BASE_URL=http://<magicdns-name>:8080` in `.env` so reset emails link correctly.
+4. Set `BASE_URL=http://<magicdns-name>:8080` so reset emails link correctly.
 
 Optional: `tailscale serve` can front the app with HTTPS on your tailnet.
 
 ### Cloudflare Tunnel (public URL, no open ports)
 
-1. In the Cloudflare Zero Trust dashboard, create a **Tunnel** and install `cloudflared` (or add it as a service in the compose file).
-2. Add a public hostname, e.g. `vault.yourdomain.com`, pointing at `http://nginx:80` (same Docker network) or `http://localhost:8080`.
+1. In the Cloudflare Zero Trust dashboard, create a **Tunnel** and install `cloudflared`.
+2. Add a public hostname, e.g. `vault.yourdomain.com`, pointing at `http://localhost:8080` on the server.
 3. Strongly recommended: add a Cloudflare **Access** policy (email OTP allow-list of your family) in front of the hostname.
-4. Set `BASE_URL=https://vault.yourdomain.com` in `.env`.
+4. Set `BASE_URL=https://vault.yourdomain.com`.
 
 ## Backups
 
-Everything that matters lives in two volumes:
+Everything that matters is in the two data paths. With bind mounts, back up the appdata folder like any other. With named volumes:
 
 ```bash
 docker run --rm -v legacy-vault_vault_db:/db -v legacy-vault_vault_media:/media \
   -v "$PWD":/backup alpine tar czf /backup/vault-backup.tar.gz /db /media
 ```
 
-Automate that (cron / Unraid User Scripts) and copy it off-site. This is a legacy vault — treat backups as part of the promise.
-
-## Architecture
-
-| Service  | Role |
-|----------|------|
-| `nginx`    | Reverse proxy, single entry point on `PORT` |
-| `frontend` | React 18 (Vite build) served by nginx |
-| `backend`  | Node.js/Express API, SQLite + FTS5, FFmpeg for thumbnails/GIF previews/waveforms |
-
-- **Auth:** JWT (30-day expiry), bcrypt-hashed passwords (8+ chars enforced client- and server-side). Media tags (`<img>`, `<video>`) can't send headers, so media URLs carry the JWT as `?token=`.
-- **Media pipeline:** on upload, FFmpeg probes duration, extracts a poster frame, and builds a short animated GIF sampled from three points in the video; audio gets a waveform image. Generation runs in the background — thumbnails appear moments after upload.
-- **Search:** FTS5 virtual table kept in sync with a delete-then-reinsert pattern (FTS5 tables don't support UPDATE), with prefix matching for search-as-you-type.
+Automate it (cron / Unraid User Scripts) and copy it off-site. This is a legacy vault — treat backups as part of the promise.
 
 ## Development
 
 ```bash
-# backend
+# API (terminal 1) — needs Node 20+ and ffmpeg installed
 cd backend && npm install
-DATA_DIR=./data JWT_SECRET=dev-secret node src/server.js
+JWT_SECRET=dev-secret DATA_DIR=./data node src/server.js
 
-# frontend (separate terminal — Vite proxies /api to :4000)
+# Web app with hot reload (terminal 2) — proxies /api to :4000
 cd frontend && npm install && npm run dev
 ```
 
-## Environment variables
+## Environment reference
 
-See `.env.example`. `JWT_SECRET` and `BASE_URL` are required; SMTP is optional but recommended; `MAX_UPLOAD_MB` defaults to 2048.
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `JWT_SECRET` | ✅ | — | Signs login tokens. Long and random. |
+| `BASE_URL` | for emails | `http://localhost:8080` | Used in password-reset links |
+| `PORT` | | `8080` | Host port (compose deployments) |
+| `GITHUB_REPO` | ghcr compose only | — | e.g. `yourname/legacy-vault` |
+| `SMTP_*` | | — | Reset emails; without SMTP, links print to logs |
+| `MAX_UPLOAD_MB` | | `2048` | Upload size limit |
+| `DATA_DIR` | | `/data` | Where the DB and uploads live |
