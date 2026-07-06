@@ -471,3 +471,13 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; margin: 0; }
   padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 500; cursor: pointer;
 }
 .seg button.on { background: var(--accent); color: var(--accent-ink); }
+
+.form-hint {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text);
+}

@@ -5,6 +5,8 @@ const { db } = require('../db');
 const { authenticate, signToken } = require('../middleware/auth');
 const { sendResetEmail } = require('../services/mailer');
 
+const log = require('../utils/logger').child('auth');
+
 const router = express.Router();
 
 const countUsers = db.prepare('SELECT COUNT(*) AS n FROM users');
@@ -47,8 +49,10 @@ router.post('/login', (req, res) => {
   const email = normEmail(req.body.email);
   const user = userByEmail.get(email);
   if (!user || !bcrypt.compareSync(String(req.body.password || ''), user.password_hash)) {
+    log.warn('failed login attempt', { email, ip: req.ip });
     return res.status(401).json({ error: 'Email or password is incorrect.' });
   }
+  log.info('login', { user: user.id, email });
   res.json({
     token: signToken(user),
     user: { id: user.id, email: user.email, name: user.name, role: user.role },
@@ -89,7 +93,7 @@ router.post('/forgot-password', async (req, res, next) => {
         user.id
       );
       await sendResetEmail(email, token).catch((err) =>
-        console.error('[mailer] failed to send reset email:', err.message)
+        log.error('failed to send reset email', { err })
       );
     }
     res.json({ ok: true, message: 'If that account exists, a reset link is on its way.' });

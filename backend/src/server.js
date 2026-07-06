@@ -1,6 +1,11 @@
 const path = require('path');
 const fs = require('fs');
+const { execFile } = require('child_process');
 const express = require('express');
+const logger = require('./utils/logger');
+
+const log = logger.child('server');
+const httpLog = logger.child('http');
 
 // db.js creates the database, schema and data directories on first import.
 require('./db');
@@ -18,9 +23,58 @@ const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1); // in case a proxy (Tailscale serve, Cloudflare) sits in front
 
+/* ---------------- startup diagnostics ---------------- */
+
+const VERSION = (() => {
+  try { return require('../package.json').version; } catch { return 'unknown'; }
+})();
+
+log.info('Legacy Vault starting', {
+  version: VERSION,
+  node: process.version,
+  data_dir: process.env.DATA_DIR || '/data',
+  log_level: process.env.LOG_LEVEL || 'info',
+  log_file: logger.LOG_FILE,
+});
+log.info('environment summary', {
+  jwt_secret: process.env.JWT_SECRET ? 'set' : 'MISSING',
+  base_url: process.env.BASE_URL || '(default http://localhost:8080)',
+  smtp: process.env.SMTP_HOST ? 'configured' : 'not configured (reset links print to this log)',
+  max_upload_mb: process.env.MAX_UPLOAD_MB || '2048',
+});
+
+// ffmpeg is required for thumbnails/previews/waveforms — say so loudly if absent.
+execFile('ffmpeg', ['-version'], (err, stdout) => {
+  if (err) log.error('ffmpeg NOT FOUND — thumbnails, GIF previews and waveforms will fail', { err });
+  else log.info('ffmpeg available', { version: stdout.split('\n')[0] });
+});
+
+/* ---------------- request logging ---------------- */
+
+app.use((req, res, next) => {
+  const started = process.hrtime.bigint();
+  res.on('finish', () => {
+    const ms = Number(process.hrtime.bigint() - started) / 1e6;
+    const entry = {
+      ms: ms.toFixed(1),
+      user: req.user ? req.user.id : undefined,
+      ip: req.ip,
+      bytes: res.getHeader('content-length'),
+    };
+    const line = `${req.method} ${req.originalUrl} -> ${res.statusCode}`;
+    if (req.path === '/api/health') return httpLog.debug(line, entry);
+    if (res.statusCode >= 500) httpLog.error(line, entry);
+    else if (res.statusCode >= 400 && ![401, 404].includes(res.statusCode)) httpLog.warn(line, entry);
+    else httpLog.info(line, entry);
+  });
+  next();
+});
+
 app.use(express.json({ limit: '5mb' })); // rich-text bodies
 
-app.get('/api/health', (req, res) => res.json({ ok: true }));
+app.get('/api/health', (req, res) =>
+  res.json({ ok: true, version: VERSION, uptime_s: Math.round(process.uptime()) })
+);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -36,10 +90,9 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 
 /* ------------------------------------------------------------------
-   Static frontend (single-container build). The compiled React app is
-   copied into ./public by the Dockerfile. Vite fingerprints assets, so
-   they can be cached hard; index.html must always revalidate or users
-   would keep an old app shell after updates.
+   Static frontend (single-container build). Vite fingerprints assets,
+   so they can be cached hard; index.html must always revalidate or
+   users would keep an old app shell after updates.
 ------------------------------------------------------------------ */
 const PUBLIC_DIR = process.env.PUBLIC_DIR || path.join(__dirname, '..', 'public');
 if (fs.existsSync(path.join(PUBLIC_DIR, 'index.html'))) {
@@ -50,8 +103,9 @@ if (fs.existsSync(path.join(PUBLIC_DIR, 'index.html'))) {
     res.set('Cache-Control', 'no-cache');
     res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
   });
+  log.info('serving frontend', { public_dir: PUBLIC_DIR });
 } else {
-  console.warn('[static] No frontend build found at', PUBLIC_DIR, '— API-only mode (use the Vite dev server).');
+  log.warn('no frontend build found — API-only mode (use the Vite dev server)', { public_dir: PUBLIC_DIR });
 }
 
 /**
@@ -60,15 +114,47 @@ if (fs.existsSync(path.join(PUBLIC_DIR, 'index.html'))) {
  */
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-  console.error('[error]', err);
+  log.error(`unhandled route error: ${req.method} ${req.originalUrl}`, {
+    err,
+    user: req.user ? req.user.id : undefined,
+  });
   if (res.headersSent) return;
   res.status(err.status || 500).json({ error: 'Something went wrong. Try again.' });
 });
 
-// A rejected promise anywhere should be logged, not crash the process.
+/* ---------------- process-level diagnostics ----------------
+   These lines are the post-mortem trail. If the container "just stopped",
+   the last lines in $DATA_DIR/logs/app.log say whether it was asked to
+   stop (SIGTERM = docker stop / array shutdown), crashed, or vanished
+   mid-heartbeat (power loss / OOM kill leaves no goodbye line). */
+
 process.on('unhandledRejection', (reason) => {
-  console.error('[unhandledRejection]', reason);
+  log.error('unhandledRejection (continuing)', { err: reason instanceof Error ? reason : new Error(String(reason)) });
 });
 
+process.on('uncaughtException', (err) => {
+  log.error('uncaughtException — exiting', { err });
+  process.exit(1);
+});
+
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.on(sig, () => {
+    log.info(`received ${sig} — shutting down cleanly (docker stop, array stop, or update)`);
+    process.exit(0);
+  });
+}
+
+// Hourly heartbeat: proves liveness and tracks memory over time. If the log
+// ends at a heartbeat with no shutdown line after it, the process was killed
+// from outside (OOM, power). RSS creeping upward across days would suggest a leak.
+setInterval(() => {
+  const m = process.memoryUsage();
+  log.info('heartbeat', {
+    uptime_h: (process.uptime() / 3600).toFixed(1),
+    rss_mb: Math.round(m.rss / 1048576),
+    heap_mb: Math.round(m.heapUsed / 1048576),
+  });
+}, 60 * 60 * 1000).unref();
+
 const PORT = parseInt(process.env.APP_PORT || '4000', 10);
-app.listen(PORT, () => console.log(`Legacy Vault listening on :${PORT}`));
+app.listen(PORT, () => log.info(`Legacy Vault listening on :${PORT}`));

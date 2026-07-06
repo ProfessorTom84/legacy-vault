@@ -1,11 +1,18 @@
 const path = require('path');
 const { execFile } = require('child_process');
+const log = require('../utils/logger').child('ffmpeg');
 const { DIRS } = require('../db');
 
 function run(cmd, args) {
+  const t0 = Date.now();
+  const label = `${cmd} ${args.slice(0, 2).join(' ')}`;
   return new Promise((resolve, reject) => {
     execFile(cmd, args, { timeout: 10 * 60 * 1000 }, (err, stdout, stderr) => {
-      if (err) return reject(new Error(`${cmd} failed: ${stderr || err.message}`));
+      if (err) {
+        log.error(`${label} failed`, { ms: Date.now() - t0, err: new Error(String(stderr || err.message).slice(0, 400)) });
+        return reject(new Error(`${cmd} failed: ${stderr || err.message}`));
+      }
+      log.debug(`${label} done`, { ms: Date.now() - t0 });
       resolve(stdout);
     });
   });

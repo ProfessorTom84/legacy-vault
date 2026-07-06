@@ -1,9 +1,11 @@
 const jwt = require('jsonwebtoken');
 const { db } = require('../db');
 
+const log = require('../utils/logger').child('auth');
+
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
-  console.error('FATAL: JWT_SECRET is not set. Copy .env.example to .env and set it.');
+  log.error('FATAL: JWT_SECRET is not set. In Unraid, add a Variable with Key JWT_SECRET; with compose, set it in .env.');
   process.exit(1);
 }
 

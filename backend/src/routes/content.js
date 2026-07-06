@@ -5,6 +5,8 @@ const { db, DIRS, syncFts, removeFts, setTags } = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { uploadVideo, uploadAudio, uploadFile, handleUpload } = require('../middleware/upload');
 const media = require('../services/media');
+const log = require('../utils/logger').child('media');
+const contentLog = require('../utils/logger').child('content');
 
 const router = express.Router();
 router.use(authenticate);
@@ -106,7 +108,7 @@ function generateVideoAssets(contentId, filePath, baseName) {
         media.videoThumbnail(filePath, baseName, duration),
         media.videoPreviewGif(filePath, baseName, duration),
       ]).catch((err) => {
-        console.error(`[media] asset generation failed for content ${contentId}:`, err.message);
+        log.error('video asset generation failed', { content: contentId, err });
         return [null, null];
       });
     })
@@ -116,7 +118,7 @@ function generateVideoAssets(contentId, filePath, baseName) {
       db.prepare('UPDATE content SET thumbnail = COALESCE(?, thumbnail), preview_gif = COALESCE(?, preview_gif) WHERE id = ?')
         .run(thumb, gif, contentId);
     })
-    .catch((err) => console.error(`[media] probe failed for content ${contentId}:`, err.message));
+    .catch((err) => log.error('duration probe failed', { content: contentId, err }));
 }
 
 function generateAudioAssets(contentId, filePath, baseName) {
@@ -127,7 +129,7 @@ function generateAudioAssets(contentId, filePath, baseName) {
       );
     })
     .catch((err) =>
-      console.error(`[media] audio assets failed for content ${contentId}:`, err.message)
+      log.error('audio asset generation failed', { content: contentId, err })
     );
 }
 
@@ -144,6 +146,10 @@ function insertContent(fields) {
       fields.filename, fields.original_name, fields.mime_type, fields.size,
       fields.category_id, fields.author_id, fields.pinned, fields.is_private
     );
+  contentLog.info('created', {
+    id: info.lastInsertRowid, type: fields.type, title: fields.title,
+    author: fields.author_id, size: fields.size,
+  });
   return info.lastInsertRowid;
 }
 

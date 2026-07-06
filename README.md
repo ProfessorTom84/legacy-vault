@@ -38,6 +38,7 @@ Because it's a single container, the standard **Docker → Add Container** form 
 | Port | Container `4000` → Host `8080` (or any free port) |
 | Path 1 | Container `/data/db` → Host `/mnt/user/appdata/legacy-vault/db` |
 | Path 2 | Container `/data/uploads` → Host `/mnt/user/appdata/legacy-vault/uploads` |
+| Path 3 | Container `/data/logs` → Host `/mnt/user/appdata/legacy-vault/logs` |
 | Variable | `JWT_SECRET` = a long random string (`openssl rand -hex 48`) |
 | Variable | `DATA_DIR` = `/data` |
 | Variable | `BASE_URL` = the address you'll open it at, e.g. `http://192.168.1.10:8080` |
@@ -99,6 +100,42 @@ Optional: `tailscale serve` can front the app with HTTPS on your tailnet.
 2. Add a public hostname, e.g. `vault.yourdomain.com`, pointing at `http://localhost:8080` on the server.
 3. Strongly recommended: add a Cloudflare **Access** policy (email OTP allow-list of your family) in front of the hostname.
 4. Set `BASE_URL=https://vault.yourdomain.com`.
+
+
+## Logs & diagnostics
+
+The app writes structured logs to two places at once: the container output (`docker logs legacy-vault`) and a persistent file at **`/data/logs/app.log`** inside the container. Mount that path to the host (see the table above / compose files) and the log **survives container removal and recreation** — so you can diagnose a problem even after replacing the container.
+
+Useful commands:
+
+```bash
+docker logs --tail 100 legacy-vault          # recent activity
+docker logs -f legacy-vault                  # follow live
+grep ERROR /mnt/user/appdata/legacy-vault/logs/app.log       # persisted errors
+```
+
+What to look for:
+
+- **Startup block** — version, whether JWT_SECRET/SMTP are set, and whether ffmpeg was found.
+- **`received SIGTERM — shutting down cleanly`** — the container was *asked* to stop (docker stop, array shutdown, an update). Not a crash.
+- **`uncaughtException — exiting`** with a stack — a real crash; the stack says where.
+- **Hourly `heartbeat` lines** with uptime and memory — if the log simply *ends* at a heartbeat with no shutdown line, the process was killed from outside (out-of-memory kill or power loss).
+- **`failed login attempt`** lines — someone typing wrong passwords, with IP.
+
+Set `LOG_LEVEL=debug` to add per-request timing and ffmpeg job durations. Auth tokens are automatically redacted from all logged URLs.
+
+## In-browser recording needs HTTPS
+
+Browsers only allow camera/microphone access on **secure addresses** — `https://` or `localhost`. On a plain `http://192.168.x.x:8181` address, in-browser recording is disabled *by the browser*, on every device; the app detects this and offers the fallback: **"Record with your camera/voice app"**, which opens the phone's native recorder and uploads the result — that works everywhere, HTTPS or not.
+
+To get full in-browser recording, serve the vault over HTTPS. The easiest path is Tailscale:
+
+```bash
+# on the server, with Tailscale installed and logged in:
+tailscale serve --bg 8181
+```
+
+That gives you `https://tower.your-tailnet.ts.net` with a valid certificate, no ports opened. Update `BASE_URL` to that address. Cloudflare Tunnel (see above) also provides HTTPS automatically.
 
 ## Backups
 

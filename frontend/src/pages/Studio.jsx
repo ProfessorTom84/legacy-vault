@@ -66,7 +66,100 @@ function RichTextEditor({ initialHtml, onChange }) {
 
 /* ---------------- recorder (module scope) ---------------- */
 
+/**
+ * In-browser recording requires three things, and each is missing on some
+ * real device/URL combination, so all three are checked up front:
+ *   1. A secure context — browsers disable camera/mic entirely on plain
+ *      http:// addresses (anything that isn't https:// or localhost).
+ *   2. navigator.mediaDevices.getUserMedia — absent on very old browsers.
+ *   3. window.MediaRecorder — absent on some older iOS versions.
+ * When any of them is missing, the UI explains which one and offers the
+ * native-camera fallback, which works everywhere including plain http.
+ */
+function recordingSupport() {
+  if (!window.isSecureContext) return 'insecure';
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return 'nodevices';
+  if (!window.MediaRecorder) return 'norecorder';
+  return 'ok';
+}
+
+// Chrome/Firefox/Edge pick WebM; Safari (macOS and every iPhone browser)
+// doesn't support WebM recording and picks an MP4 variant instead.
+const MIME_CANDIDATES = {
+  video: [
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm',
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+    'video/mp4;codecs=h264,aac',
+    'video/mp4',
+  ],
+  audio: [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/mp4;codecs=mp4a.40.2',
+    'audio/mp4',
+  ],
+};
+
+function pickMime(kind) {
+  return MIME_CANDIDATES[kind].find((m) => MediaRecorder.isTypeSupported(m)) || '';
+}
+
+function extensionFor(mime, kind) {
+  if ((mime || '').includes('mp4')) return kind === 'audio' ? 'm4a' : 'mp4';
+  if ((mime || '').includes('ogg')) return 'ogg';
+  return 'webm';
+}
+
+/** Human explanation for every way getUserMedia can fail. */
+function explainGetUserMediaError(err, kind) {
+  const device = kind === 'video' ? 'camera' : 'microphone';
+  switch (err && err.name) {
+    case 'NotAllowedError':
+    case 'SecurityError':
+      return `Access to the ${device} was denied. Click the ${device} icon in the address bar (or your browser's site settings) to allow it, then try again.`;
+    case 'NotFoundError':
+    case 'DevicesNotFoundError':
+      return `No ${device} was found on this device. You can upload a file instead, or use the "record with your ${kind === 'video' ? 'camera' : 'voice'} app" option below.`;
+    case 'NotReadableError':
+    case 'TrackStartError':
+      return `The ${device} is busy — another app (FaceTime, Zoom, Teams…) may be using it. Close other apps that use the ${device} and try again.`;
+    default:
+      return `Could not start the ${device}${err && err.message ? ` (${err.message})` : ''}. You can upload a file instead.`;
+  }
+}
+
+/**
+ * Fallback that works on every device and even on plain http: a file input
+ * with `capture` opens the phone's native camera/voice recorder directly on
+ * iOS and Android, and a normal file picker on desktop.
+ */
+function NativeCaptureButton({ kind, onPicked }) {
+  const inputRef = useRef(null);
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept={kind === 'video' ? 'video/*' : 'audio/*'}
+        capture="user"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const f = e.target.files && e.target.files[0];
+          if (f) onPicked(f);
+          e.target.value = ''; // allow re-picking the same file
+        }}
+      />
+      <Button type="button" variant="ghost" onClick={() => inputRef.current && inputRef.current.click()}>
+        {kind === 'video' ? '📱 Record with your camera app' : '📱 Record with your voice app'}
+      </Button>
+    </>
+  );
+}
+
 function Recorder({ kind, onRecorded }) {
+  const support = recordingSupport(); // evaluated per render; constant per page load
   const [status, setStatus] = useState('idle'); // idle | live | recording | done | error
   const [error, setError] = useState('');
   const [blobUrl, setBlobUrl] = useState(null);
@@ -94,46 +187,87 @@ function Recorder({ kind, onRecorded }) {
 
   const start = async () => {
     setError('');
-    try {
-      const constraints = kind === 'video' ? { video: { facingMode: 'user' }, audio: true } : { audio: true };
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      streamRef.current = stream;
-      if (videoRef.current && kind === 'video') {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play().catch(() => {});
+    const wantVideo = kind === 'video';
+    // Try the front camera first; if the exact constraint is the problem
+    // (some webcams/laptops), retry with the loosest possible ask.
+    const attempts = wantVideo
+      ? [{ video: { facingMode: 'user' }, audio: true }, { video: true, audio: true }]
+      : [{ audio: true }];
+    let stream = null;
+    let lastErr = null;
+    for (const constraints of attempts) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        break;
+      } catch (err) {
+        lastErr = err;
+        if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) break; // no point retrying a denial
       }
-      setStatus('live');
-    } catch {
-      setError('Camera/microphone access was blocked. Allow it in your browser settings and try again.');
-      setStatus('error');
     }
+    if (!stream) {
+      setError(explainGetUserMediaError(lastErr, kind));
+      setStatus('error');
+      return;
+    }
+    streamRef.current = stream;
+    if (videoRef.current && wantVideo) {
+      videoRef.current.srcObject = stream;
+      // playsInline + muted are required for iOS to show a live self-view
+      // instead of hijacking the screen or refusing to autoplay.
+      videoRef.current.play().catch(() => {});
+    }
+    setStatus('live');
   };
 
   const record = () => {
     const stream = streamRef.current;
     if (!stream) return;
     chunksRef.current = [];
-    const mimeCandidates = kind === 'video'
-      ? ['video/webm;codecs=vp9,opus', 'video/webm', 'video/mp4']
-      : ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
-    const mimeType = mimeCandidates.find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';
-    const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    const mimeType = pickMime(kind);
+    let rec;
+    try {
+      rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    } catch {
+      // Last resort: let the browser choose everything.
+      try {
+        rec = new MediaRecorder(stream);
+      } catch (err2) {
+        setError(`Recording is not supported by this browser (${err2.message}). Use the option below to record with your device's own app, then it uploads here.`);
+        setStatus('error');
+        stopStream();
+        return;
+      }
+    }
     recorderRef.current = rec;
-    rec.ondataavailable = (e) => e.data.size > 0 && chunksRef.current.push(e.data);
+    rec.ondataavailable = (e) => e.data && e.data.size > 0 && chunksRef.current.push(e.data);
+    rec.onerror = (e) => {
+      setError(`Recording failed${e.error ? `: ${e.error.message}` : ''}. Try again, or record with your device's own app below.`);
+      setStatus('error');
+      stopStream();
+      clearInterval(timerRef.current);
+    };
     rec.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: rec.mimeType || (kind === 'video' ? 'video/webm' : 'audio/webm') });
+      const type = rec.mimeType || mimeType || (kind === 'video' ? 'video/mp4' : 'audio/mp4');
+      const blob = new Blob(chunksRef.current, { type });
+      if (blob.size === 0) {
+        setError('The recording came out empty — this can happen on some browsers. Try again, or record with your device\u2019s own app below.');
+        setStatus('error');
+        stopStream();
+        return;
+      }
       const url = URL.createObjectURL(blob);
       setBlobUrl((old) => {
         if (old) URL.revokeObjectURL(old);
         return url;
       });
-      const ext = (rec.mimeType || '').includes('mp4') ? 'mp4' : 'webm';
-      onRecorded(new File([blob], `recording-${Date.now()}.${ext}`, { type: blob.type }));
+      onRecorded(new File([blob], `recording-${Date.now()}.${extensionFor(type, kind)}`, { type }));
       stopStream();
       setStatus('done');
       clearInterval(timerRef.current);
     };
-    rec.start();
+    // A 1s timeslice makes Safari deliver data during recording instead of
+    // holding everything until stop — long recordings are much safer.
+    rec.start(1000);
     setElapsed(0);
     timerRef.current = setInterval(() => setElapsed((s) => s + 1), 1000);
     setStatus('recording');
@@ -147,10 +281,44 @@ function Recorder({ kind, onRecorded }) {
     onRecorded(null);
     setStatus('idle');
     setElapsed(0);
+    setError('');
   };
 
   const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
   const ss = String(elapsed % 60).padStart(2, '0');
+
+  /* ---- unsupported environments get an explanation, not a dead button ---- */
+  if (support !== 'ok') {
+    const messages = {
+      insecure: (
+        <>
+          <strong>In-browser recording needs a secure (HTTPS) address.</strong> You\u2019re on a plain
+          http:// address, and browsers disable the camera and microphone there — nothing is wrong with
+          your device. Two easy ways forward: use the button below to record with your device\u2019s own
+          camera/voice app (works right now), or serve the vault over HTTPS — the README covers
+          Tailscale HTTPS in a few minutes.
+        </>
+      ),
+      nodevices: <>This browser doesn\u2019t support camera/microphone access. You can still record with your device\u2019s own app below, or upload a file.</>,
+      norecorder: <>This browser can show the camera but can\u2019t record from it (older iOS versions, some webviews). Use the button below to record with your device\u2019s own app — it uploads here just the same.</>,
+    };
+    return (
+      <div style={{ marginBottom: 18 }}>
+        <div className="form-hint" style={{ marginBottom: 12 }}>{messages[support]}</div>
+        {blobUrl && (kind === 'video'
+          ? <div className="record-stage" style={{ marginBottom: 12 }}><video src={blobUrl} controls playsInline /></div>
+          : <audio src={blobUrl} controls style={{ width: '100%', marginBottom: 12 }} />)}
+        <NativeCaptureButton
+          kind={kind}
+          onPicked={(f) => {
+            const url = URL.createObjectURL(f);
+            setBlobUrl((old) => { if (old) URL.revokeObjectURL(old); return url; });
+            onRecorded(f);
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div style={{ marginBottom: 18 }}>
@@ -159,7 +327,7 @@ function Recorder({ kind, onRecorded }) {
         <div className="record-stage" style={{ marginBottom: 12 }}>
           {status === 'idle' || status === 'error'
             ? <span style={{ color: 'var(--faint)' }}>Camera preview appears here</span>
-            : <video ref={videoRef} muted playsInline />}
+            : <video ref={videoRef} muted playsInline autoPlay />}
         </div>
       )}
       {status === 'done' && blobUrl && (
@@ -169,9 +337,20 @@ function Recorder({ kind, onRecorded }) {
       )}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         {(status === 'idle' || status === 'error') && (
-          <Button type="button" variant="ghost" onClick={start}>
-            {kind === 'video' ? '🎥 Open camera' : '🎙️ Open microphone'}
-          </Button>
+          <>
+            <Button type="button" variant="ghost" onClick={start}>
+              {kind === 'video' ? '🎥 Open camera' : '🎙️ Open microphone'}
+            </Button>
+            <NativeCaptureButton
+              kind={kind}
+              onPicked={(f) => {
+                const url = URL.createObjectURL(f);
+                setBlobUrl((old) => { if (old) URL.revokeObjectURL(old); return url; });
+                onRecorded(f);
+                setStatus('done');
+              }}
+            />
+          </>
         )}
         {status === 'live' && <Button type="button" onClick={record}>● Start recording</Button>}
         {status === 'recording' && (

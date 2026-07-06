@@ -2,6 +2,7 @@ const path = require('path');
 const crypto = require('crypto');
 const multer = require('multer');
 const { DIRS } = require('../db');
+const log = require('../utils/logger').child('upload');
 
 const MAX_UPLOAD_MB = parseInt(process.env.MAX_UPLOAD_MB || '2048', 10);
 
@@ -31,6 +32,7 @@ function makeUploader(dir, mimePrefixes) {
       ) {
         return cb(null, true);
       }
+      log.warn('rejected upload — type not accepted', { mimetype: file.mimetype, field: file.fieldname });
       cb(new multer.MulterError('LIMIT_UNEXPECTED_FILE', file.fieldname));
     },
   });
@@ -50,6 +52,7 @@ function handleUpload(uploader, field) {
     single(req, res, (err) => {
       if (!err) return next();
       if (err instanceof multer.MulterError) {
+        log.warn('upload failed', { code: err.code, field });
         const messages = {
           LIMIT_FILE_SIZE: `That file is too large. The limit is ${MAX_UPLOAD_MB} MB.`,
           LIMIT_UNEXPECTED_FILE: 'That file type is not accepted here.',

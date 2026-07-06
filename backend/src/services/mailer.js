@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const log = require('../utils/logger').child('mailer');
 
 function getTransport() {
   if (!process.env.SMTP_HOST) return null;
@@ -18,7 +19,7 @@ async function sendResetEmail(to, token) {
   const link = `${base}/reset-password?token=${token}`;
   if (!transport) {
     // SMTP not configured — log the link so the admin can pass it on manually.
-    console.log(`[mailer] SMTP not configured. Password reset link for ${to}: ${link}`);
+    log.info(`SMTP not configured — password reset link for ${to}: ${link}`);
     return { logged: true, link };
   }
   await transport.sendMail({

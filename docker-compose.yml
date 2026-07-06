@@ -17,7 +17,9 @@ services:
     volumes:
       - vault_db:/data/db
       - vault_media:/data/uploads
+      - vault_logs:/data/logs
 
 volumes:
   vault_db:
   vault_media:
+  vault_logs:
