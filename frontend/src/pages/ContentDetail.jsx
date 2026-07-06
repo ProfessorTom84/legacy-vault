@@ -23,7 +23,12 @@ function Player({ item }) {
   if (item.type === 'text') {
     return (
       <div className="doc-frame">
-        <div className="doc-body" dangerouslySetInnerHTML={{ __html: item.body }} />
+        <div className="letter-sheet">
+          <div className="letter-byline">
+            {item.author_name ? `Written by ${item.author_name}` : 'A letter'} · {formatDate(item.created_at)}
+          </div>
+          <div className="doc-body letter-body" dangerouslySetInnerHTML={{ __html: item.body }} />
+        </div>
       </div>
     );
   }

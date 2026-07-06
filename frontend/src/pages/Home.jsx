@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../api';
+import { api, mediaUrl } from '../api';
 import { useAuth } from '../auth';
 import { CategoryRow, ContentCard, EmptyState, Spinner } from '../components';
 import { Link } from 'react-router-dom';
@@ -20,7 +20,16 @@ export default function Home() {
     return () => { cancelled = true; };
   }, []);
 
-  if (state.loading) return <Spinner />;
+  if (state.loading) {
+    return (
+      <div>
+        <div className="skeleton skeleton-hero" />
+        <div className="skeleton-row">
+          {[...Array(5)].map((_, i) => <div key={i} className="skeleton skeleton-card" />)}
+        </div>
+      </div>
+    );
+  }
 
   const pinned = state.content.filter((c) => c.pinned);
   const byCategory = state.categories
@@ -33,14 +42,39 @@ export default function Home() {
 
   return (
     <>
-      <section className="hero">
-        <div className="hero-eyebrow">{state.settings.welcome_title || 'For the people I love'}</div>
-        <h1 className="hero-title">
-          {state.settings.welcome_message ||
-            'Everything here was left for you. Search for what you need, or wander the shelves.'}
-        </h1>
-        {user && <p className="hero-message">Welcome back, {user.name}.</p>}
-      </section>
+      {(() => {
+        const featured =
+          pinned.find((i) => i.thumbnail) || state.content.find((i) => i.thumbnail);
+        if (!featured) {
+          return (
+            <section className="hero">
+              <div className="hero-eyebrow">{state.settings.welcome_title || 'For the people I love'}</div>
+              <h1 className="hero-title">
+                {state.settings.welcome_message ||
+                  'Everything here was left for you. Search for what you need, or wander the shelves.'}
+              </h1>
+              {user && <p className="hero-message">Welcome back, {user.name}.</p>}
+            </section>
+          );
+        }
+        return (
+          <section className="hero hero-cinema">
+            <img className="hero-backdrop" src={mediaUrl(featured.id, 'thumb')} alt="" />
+            <div className="hero-scrim" />
+            <div className="hero-inner">
+              <div className="hero-eyebrow">{state.settings.welcome_title || 'For the people I love'}</div>
+              <h1 className="hero-title">{featured.title}</h1>
+              {featured.description && <p className="hero-message">{featured.description}</p>}
+              <div className="hero-actions">
+                <Link className="btn-hero" to={`/content/${featured.id}`}>
+                  {featured.type === 'video' ? '▶ Watch now' : featured.type === 'audio' ? '▶ Listen now' : 'Open'}
+                </Link>
+                <Link className="btn-hero ghost" to="/library">Browse everything</Link>
+              </div>
+            </div>
+          </section>
+        );
+      })()}
 
       {state.content.length === 0 && (
         <EmptyState title="The vault is empty">
