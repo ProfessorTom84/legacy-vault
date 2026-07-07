@@ -266,6 +266,9 @@ export function TopBar() {
           <NavLink to="/library" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>Library</NavLink>
           <NavLink to="/collections" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>Collections</NavLink>
           {isAuthor && (
+            <NavLink to="/questions" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>Questions</NavLink>
+          )}
+          {isAuthor && (
             <NavLink to="/studio" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>+ Add</NavLink>
           )}
           {isAdmin && (

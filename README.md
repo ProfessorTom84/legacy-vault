@@ -11,6 +11,14 @@ A private, self-hosted content library for the things you want to leave behind �
 - **Private by design** — every media file is served through authenticated endpoints; nothing is publicly reachable
 - **One container** — API, web app, media streaming and ffmpeg processing in a single image
 
+## Questions worth answering (the prompt engine)
+
+The hardest part of a legacy vault is knowing what to record. The vault ships with **148 original questions in 14 themed decks** — love story, childhood, family history, traditions and recipes, work, hard times, beliefs, favorites, milestone letters, plus the practical decks that make this a vault: the house, money and papers, and just-in-case.
+
+- **Today's question** greets authors on the home page — one tap opens the recorder with the question as the title. Skip surfaces another; skipped questions come back after the fresh ones run out.
+- **Ask a question**: any family member can ask one from their home page ("Tell the story of the sailing trip?"). It lands in the author's queue with their name on it, and family questions always surface first.
+- **Decks with progress** live under Questions in the nav — answer any question in any order; answered ones link to the recording.
+
 ## How it fits together
 
 One container runs everything: Node/Express serves the compiled React app, the JSON API, and authenticated media streams (with HTTP range support, so video seeking works). ffmpeg inside the same image generates thumbnails, GIF hover previews and audio waveforms. Data lives outside the container in two mounts: `/data/db` (SQLite) and `/data/uploads` (all media).

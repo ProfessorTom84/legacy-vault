@@ -18,6 +18,7 @@ const collectionRoutes = require('./routes/collections');
 const mediaRoutes = require('./routes/media');
 const searchRoutes = require('./routes/search');
 const settingsRoutes = require('./routes/settings');
+const promptRoutes = require('./routes/prompts');
 
 const app = express();
 app.disable('x-powered-by');
@@ -99,6 +100,7 @@ app.use('/api/collections', collectionRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/prompts', promptRoutes.router);
 
 // Unknown API routes answer in JSON, never HTML. Registered before the SPA
 // fallback so /api/* can never be answered with index.html.

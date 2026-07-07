@@ -582,3 +582,73 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; margin: 0; }
 button, .chip, .seg button { transition: background .15s ease, color .15s ease, transform .12s ease; }
 .chip:active, .seg button:active { transform: scale(.97); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ==========================================================================
+   Questions — the prompt engine
+   ========================================================================== */
+.qcard {
+  position: relative; margin: 26px 0 34px; padding: 30px 32px;
+  border-radius: 18px; border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line));
+  background:
+    radial-gradient(ellipse at 12% 0%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 60%),
+    var(--panel);
+}
+.qcard-eyebrow {
+  font-family: var(--font-mono, monospace); font-size: 12px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 12px;
+}
+.qcard-text {
+  font-family: var(--font-display, Fraunces, Georgia, serif);
+  font-size: clamp(21px, 2.6vw, 29px); line-height: 1.3; max-width: 62ch;
+}
+.qcard-actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; align-items: center; }
+.qcard-skip { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 14px; padding: 8px 10px; }
+.qcard-skip:hover { color: var(--text); }
+.qcard-progress { margin-top: 16px; font-size: 13px; color: var(--muted); }
+.qcard-progress a { color: var(--accent); }
+.qcard-ask-row { display: flex; gap: 10px; margin-top: 4px; }
+.qcard-ask-row .input { flex: 1; }
+@media (max-width: 640px) { .qcard { padding: 22px 18px; } .qcard-ask-row { flex-direction: column; } }
+
+.answering-banner {
+  margin-bottom: 18px; padding: 12px 16px; border-radius: 10px; font-size: 14.5px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.answering-banner span { color: var(--muted); }
+
+.deck-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 16px; margin-top: 22px; }
+.deck-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 12px; text-align: left;
+  padding: 20px; border-radius: 16px; border: 1px solid var(--line); background: var(--panel);
+  cursor: pointer; color: var(--text);
+  transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+.deck-card:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); box-shadow: 0 12px 30px rgba(0,0,0,.35); }
+.deck-name { font-family: var(--font-display, Fraunces, Georgia, serif); font-size: 17.5px; line-height: 1.25; }
+.deck-sub { font-size: 12.5px; color: var(--muted); }
+.deck-ring {
+  width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; flex: none;
+}
+.deck-ring span {
+  width: 42px; height: 42px; border-radius: 50%; background: var(--panel);
+  display: grid; place-items: center; font-family: var(--font-mono, monospace); font-size: 12px;
+}
+.deck-ring em { font-style: normal; color: var(--muted); font-size: 10px; }
+
+.question-list { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+.question-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 18px;
+  padding: 16px 18px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel);
+}
+.question-row.answered { opacity: .72; }
+.question-text { font-size: 15.5px; line-height: 1.45; }
+.asked-by { color: var(--accent); font-size: 13px; }
+.question-cta {
+  flex: none; text-decoration: none; color: var(--text); font-size: 14px; font-weight: 600;
+  padding: 8px 14px; border-radius: 9px; border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.question-cta:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.question-answered { flex: none; color: var(--ok, #4a9e6b); font-size: 13.5px; text-decoration: none; }
+@media (max-width: 640px) { .question-row { flex-direction: column; align-items: flex-start; } }

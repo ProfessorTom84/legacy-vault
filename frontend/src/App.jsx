@@ -8,6 +8,7 @@ import Library from './pages/Library';
 import ContentDetail from './pages/ContentDetail';
 import { Collections, CollectionDetail } from './pages/Collections';
 import Studio from './pages/Studio';
+import Questions from './pages/Questions';
 import Admin from './pages/Admin';
 
 function Protected({ children, role }) {
@@ -38,6 +39,7 @@ export default function App() {
       <Route path="/content/:id" element={<Protected><ContentDetail /></Protected>} />
       <Route path="/collections" element={<Protected><Collections /></Protected>} />
       <Route path="/collections/:id" element={<Protected><CollectionDetail /></Protected>} />
+      <Route path="/questions" element={<Protected><Questions /></Protected>} />
       <Route path="/studio" element={<Protected role="author"><Studio /></Protected>} />
       <Route path="/studio/edit/:id" element={<Protected role="author"><Studio /></Protected>} />
       <Route path="/admin" element={<Protected role="admin"><Admin /></Protected>} />

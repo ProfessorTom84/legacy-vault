@@ -5,6 +5,7 @@ const { db, DIRS, syncFts, removeFts, setTags } = require('../db');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { uploadVideo, uploadAudio, uploadFile, handleUpload } = require('../middleware/upload');
 const media = require('../services/media');
+const { markAnswered } = require('./prompts');
 const log = require('../utils/logger').child('media');
 const contentLog = require('../utils/logger').child('content');
 
@@ -133,6 +134,14 @@ function generateAudioAssets(contentId, filePath, baseName) {
     );
 }
 
+function insertContentTracked(req, fields) {
+  const id = insertContent(fields);
+  // If this publish answers a question, record it (prompt_id arrives in the
+  // JSON body for letters and as a FormData field for uploads).
+  if (req.body && req.body.prompt_id) markAnswered(fields.author_id, req.body.prompt_id, id);
+  return id;
+}
+
 function insertContent(fields) {
   const info = db
     .prepare(
@@ -181,7 +190,7 @@ function commonFields(req, type, file) {
 router.post('/text', requireRole('author'), (req, res) => {
   const fields = commonFields(req, 'text', null);
   if (!fields.title) return res.status(400).json({ error: 'Give it a title.' });
-  const id = insertContent(fields);
+  const id = insertContentTracked(req, fields);
   applyCommonMeta(id, req.body);
   res.json({ content: serialize(db.prepare(`${BASE_SELECT} WHERE c.id = ?`).get(id)) });
 });
@@ -194,7 +203,7 @@ router.post(
     if (!req.file) return res.status(400).json({ error: 'Attach a video file.' });
     const fields = commonFields(req, 'video', req.file);
     if (!fields.title) fields.title = path.parse(req.file.originalname).name;
-    const id = insertContent(fields);
+    const id = insertContentTracked(req, fields);
     applyCommonMeta(id, req.body);
     generateVideoAssets(id, req.file.path, path.parse(req.file.filename).name);
     res.json({ content: serialize(db.prepare(`${BASE_SELECT} WHERE c.id = ?`).get(id)) });
@@ -209,7 +218,7 @@ router.post(
     if (!req.file) return res.status(400).json({ error: 'Attach an audio file.' });
     const fields = commonFields(req, 'audio', req.file);
     if (!fields.title) fields.title = path.parse(req.file.originalname).name;
-    const id = insertContent(fields);
+    const id = insertContentTracked(req, fields);
     applyCommonMeta(id, req.body);
     generateAudioAssets(id, req.file.path, path.parse(req.file.filename).name);
     res.json({ content: serialize(db.prepare(`${BASE_SELECT} WHERE c.id = ?`).get(id)) });
@@ -224,7 +233,7 @@ router.post(
     if (!req.file) return res.status(400).json({ error: 'Attach a file.' });
     const fields = commonFields(req, 'file', req.file);
     if (!fields.title) fields.title = path.parse(req.file.originalname).name;
-    const id = insertContent(fields);
+    const id = insertContentTracked(req, fields);
     applyCommonMeta(id, req.body);
     res.json({ content: serialize(db.prepare(`${BASE_SELECT} WHERE c.id = ?`).get(id)) });
   }

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { Button, Field, MetaFields, useCategories } from '../components';
 
@@ -385,13 +385,20 @@ const TABS = [
 
 export default function Studio() {
   const { id } = useParams(); // present in edit mode
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  // Arriving from a question: /studio?prompt=12&type=video&title=...
+  const promptId = searchParams.get('prompt');
+  const promptTitle = searchParams.get('title') || '';
+  const promptType = ['video', 'audio', 'text'].includes(searchParams.get('type'))
+    ? searchParams.get('type')
+    : null;
   const categories = useCategories();
 
-  const [tab, setTab] = useState('video');
+  const [tab, setTab] = useState(promptType || 'video');
   // Recording is the vault's headline act — it opens first for video/audio.
   const [mode, setMode] = useState('record'); // record | upload
-  const [meta, setMeta] = useState(EMPTY_META);
+  const [meta, setMeta] = useState(promptTitle ? { ...EMPTY_META, title: promptTitle } : EMPTY_META);
   const [file, setFile] = useState(null);
   const [recorded, setRecorded] = useState(null);
   const [body, setBody] = useState('');
@@ -453,6 +460,7 @@ export default function Studio() {
           category_id: meta.category_id || null,
           tags: tagsArray,
           body,
+          prompt_id: promptId || undefined,
         });
       } else {
         const chosen = mode === 'record' ? recorded : file;
@@ -472,6 +480,7 @@ export default function Studio() {
         // the backend compares with === 'true'.
         fd.append('pinned', meta.pinned);
         fd.append('is_private', meta.is_private);
+        if (promptId) fd.append('prompt_id', promptId);
         result = await api.upload(`/content/upload/${tab}`, fd);
       }
       navigate(`/content/${result.content.id}`);
@@ -494,6 +503,13 @@ export default function Studio() {
       </p>
 
       {error && <div className="form-error">{error}</div>}
+
+      {!editingItem && promptTitle && (
+        <div className="answering-banner">
+          Answering: <strong>{promptTitle}</strong>
+          <span> — the question is set as the title; change it if you like.</span>
+        </div>
+      )}
 
       {!editingItem && (
         <>

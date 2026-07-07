@@ -1,12 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { api, mediaUrl } from '../api';
+import { studioLink } from './Questions';
 import { useAuth } from '../auth';
-import { CategoryRow, ContentCard, EmptyState, Spinner } from '../components';
+import { Button, CategoryRow, ContentCard, EmptyState, Spinner } from '../components';
 import { Link } from 'react-router-dom';
 
 export default function Home() {
   const { user, isAuthor } = useAuth();
   const [state, setState] = useState({ loading: true, content: [], categories: [], settings: {} });
+  const [question, setQuestion] = useState(null); // today's question (authors)
+  const [asked, setAsked] = useState('');          // ask-a-question input (family)
+  const [askDone, setAskDone] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -30,6 +34,27 @@ export default function Home() {
       </div>
     );
   }
+
+  useEffect(() => {
+    if (!isAuthor) return;
+    api.get('/prompts/next').then((d) => setQuestion(d)).catch(() => {});
+  }, [isAuthor]);
+
+  const nextQuestion = () => {
+    if (!question?.prompt) return;
+    api.post(`/prompts/${question.prompt.id}/skip`, {})
+      .then(() => api.get('/prompts/next'))
+      .then((d) => setQuestion(d))
+      .catch(() => {});
+  };
+
+  const askQuestion = (e) => {
+    e.preventDefault();
+    if (asked.trim().length < 5) return;
+    api.post('/prompts', { text: asked.trim() })
+      .then(() => { setAsked(''); setAskDone(true); })
+      .catch(() => {});
+  };
 
   const pinned = state.content.filter((c) => c.pinned);
   const byCategory = state.categories
@@ -75,6 +100,48 @@ export default function Home() {
           </section>
         );
       })()}
+
+      {isAuthor && question?.prompt && (
+        <section className="qcard">
+          <div className="qcard-eyebrow">
+            {question.prompt.asked_by_name
+              ? `${question.prompt.asked_by_name} asks`
+              : `Today’s question · ${question.prompt.theme}`}
+          </div>
+          <div className="qcard-text">{question.prompt.text}</div>
+          <div className="qcard-actions">
+            <Link className="btn-hero" to={studioLink(question.prompt, 'video')}>🎥 Record</Link>
+            <Link className="btn-hero ghost" to={studioLink(question.prompt, 'audio')}>🎙️ Voice</Link>
+            <Link className="btn-hero ghost" to={studioLink(question.prompt, 'text')}>✍️ Write</Link>
+            <button type="button" className="qcard-skip" onClick={nextQuestion}>↻ Another question</button>
+          </div>
+          <div className="qcard-progress">
+            {question.answered} of {question.total} answered · <Link to="/questions">browse all decks</Link>
+          </div>
+        </section>
+      )}
+
+      {!isAuthor && (
+        <section className="qcard qcard-ask">
+          <div className="qcard-eyebrow">Is there a story you want told?</div>
+          {askDone ? (
+            <div className="qcard-text" style={{ fontSize: 19 }}>
+              Sent. Your question is waiting in the studio with your name on it. ✓
+            </div>
+          ) : (
+            <form onSubmit={askQuestion} className="qcard-ask-row">
+              <input
+                className="input"
+                value={asked}
+                onChange={(e) => setAsked(e.target.value)}
+                placeholder="Ask anything — “Tell the story of the sailing trip?”"
+                maxLength={500}
+              />
+              <Button type="submit">Ask</Button>
+            </form>
+          )}
+        </section>
+      )}
 
       {state.content.length === 0 && (
         <EmptyState title="The vault is empty">

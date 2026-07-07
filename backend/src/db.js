@@ -92,6 +92,25 @@ CREATE TABLE IF NOT EXISTS collection_items (
   PRIMARY KEY (collection_id, content_id)
 );
 
+CREATE TABLE IF NOT EXISTS prompts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  theme TEXT NOT NULL,
+  text TEXT NOT NULL,
+  suggested_type TEXT NOT NULL DEFAULT 'video',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  asked_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS prompt_state (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  prompt_id INTEGER NOT NULL REFERENCES prompts(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('answered','skipped')),
+  content_id INTEGER REFERENCES content(id) ON DELETE SET NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, prompt_id)
+);
+
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL DEFAULT ''
@@ -185,5 +204,18 @@ const setTags = db.transaction((contentId, names) => {
   }
   pruneTags.run();
 });
+
+// Seed the built-in question library once (custom/asked questions have
+// asked_by set and are never touched by this).
+if (db.prepare('SELECT COUNT(*) AS n FROM prompts WHERE asked_by IS NULL').get().n === 0) {
+  const seedPrompts = require('./data/prompts-seed');
+  const ins = db.prepare(
+    'INSERT INTO prompts (theme, text, suggested_type, sort_order) VALUES (?, ?, ?, ?)'
+  );
+  const tx = db.transaction((rows) => {
+    for (const p of rows) ins.run(p.theme, p.text, p.suggested_type, p.sort_order);
+  });
+  tx(seedPrompts);
+}
 
 module.exports = { db, DIRS, UPLOAD_DIR, syncFts, removeFts, setTags, stripHtml };
